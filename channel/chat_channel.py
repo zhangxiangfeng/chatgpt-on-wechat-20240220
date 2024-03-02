@@ -59,19 +59,19 @@ class ChatChannel(Channel):
                 group_name_white_list = config.get("group_name_white_list", [])
                 group_name_keyword_white_list = config.get("group_name_keyword_white_list", [])
                 if any(
-                    [
-                        group_name in group_name_white_list,
-                        "ALL_GROUP" in group_name_white_list,
-                        check_contain(group_name, group_name_keyword_white_list),
-                    ]
+                        [
+                            group_name in group_name_white_list,
+                            "ALL_GROUP" in group_name_white_list,
+                            check_contain(group_name, group_name_keyword_white_list),
+                        ]
                 ):
                     group_chat_in_one_session = conf().get("group_chat_in_one_session", [])
                     session_id = cmsg.actual_user_id
                     if any(
-                        [
-                            group_name in group_chat_in_one_session,
-                            "ALL_GROUP" in group_chat_in_one_session,
-                        ]
+                            [
+                                group_name in group_chat_in_one_session,
+                                "ALL_GROUP" in group_chat_in_one_session,
+                            ]
                     ):
                         session_id = group_id
                 else:
@@ -81,7 +81,8 @@ class ChatChannel(Channel):
             else:
                 context["session_id"] = cmsg.other_user_id
                 context["receiver"] = cmsg.other_user_id
-            e_context = PluginManager().emit_event(EventContext(Event.ON_RECEIVE_MESSAGE, {"channel": self, "context": context}))
+            e_context = PluginManager().emit_event(
+                EventContext(Event.ON_RECEIVE_MESSAGE, {"channel": self, "context": context}))
             context = e_context["context"]
             if e_context.is_pass() or context is None:
                 return context
@@ -142,6 +143,9 @@ class ChatChannel(Channel):
                 match_prefix = check_prefix(content, conf().get("single_chat_prefix", [""]))
                 if match_prefix is not None:  # 判断如果匹配到自定义前缀，则返回过滤掉前缀+空格后的内容
                     content = content.replace(match_prefix, "", 1).strip()
+                elif check_prefix(kwargs['msg'].from_user_nickname,
+                                  conf().get("single_chat_prefix", [""])):  # 如果源消息的来源在白名单也可以
+                    pass
                 elif context["origin_ctype"] == ContextType.VOICE:  # 如果源消息是私聊的语音消息，允许不匹配前缀，放宽条件
                     pass
                 else:
@@ -154,15 +158,32 @@ class ChatChannel(Channel):
             else:
                 context.type = ContextType.TEXT
             context.content = content.strip()
-            if "desire_rtype" not in context and conf().get("always_reply_voice") and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
+            if "desire_rtype" not in context and conf().get(
+                    "always_reply_voice") and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
                 context["desire_rtype"] = ReplyType.VOICE
         elif context.type == ContextType.VOICE:
-            if "desire_rtype" not in context and conf().get("voice_reply_voice") and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
+            if "desire_rtype" not in context and conf().get(
+                    "voice_reply_voice") and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
                 context["desire_rtype"] = ReplyType.VOICE
 
         return context
 
     def _handle(self, context: Context):
+        if context is None or not context.content:
+            return
+        logger.debug("[WX] ready to handle context: {}".format(context))
+        # reply的构建步骤
+        reply = self._generate_reply(context)
+
+        logger.debug("[WX] ready to decorate reply: {}".format(reply))
+        # reply的包装步骤
+        reply = self._decorate_reply(context, reply)
+
+        # reply的发送步骤
+        self._send_reply(context, reply)
+
+    # todo 异步监听队列对象，来实现消息进度通知发送。
+    def _send_msg(self, context: Context):
         if context is None or not context.content:
             return
         logger.debug("[WX] ready to handle context: {}".format(context))
@@ -254,9 +275,11 @@ class ChatChannel(Channel):
                     if context.get("isgroup", False):
                         if not context.get("no_need_at", False):
                             reply_text = "@" + context["msg"].actual_user_nickname + "\n" + reply_text.strip()
-                        reply_text = conf().get("group_chat_reply_prefix", "") + reply_text + conf().get("group_chat_reply_suffix", "")
+                        reply_text = conf().get("group_chat_reply_prefix", "") + reply_text + conf().get(
+                            "group_chat_reply_suffix", "")
                     else:
-                        reply_text = conf().get("single_chat_reply_prefix", "") + reply_text + conf().get("single_chat_reply_suffix", "")
+                        reply_text = conf().get("single_chat_reply_prefix", "") + reply_text + conf().get(
+                            "single_chat_reply_suffix", "")
                     reply.content = reply_text
                 elif reply.type == ReplyType.ERROR or reply.type == ReplyType.INFO:
                     reply.content = "[" + str(reply.type) + "]\n" + reply.content
@@ -266,7 +289,8 @@ class ChatChannel(Channel):
                     logger.error("[WX] unknown reply type: {}".format(reply.type))
                     return
             if desire_rtype and desire_rtype != reply.type and reply.type not in [ReplyType.ERROR, ReplyType.INFO]:
-                logger.warning("[WX] desire_rtype: {}, but reply type: {}".format(context.get("desire_rtype"), reply.type))
+                logger.warning(
+                    "[WX] desire_rtype: {}, but reply type: {}".format(context.get("desire_rtype"), reply.type))
             return reply
 
     def _send_reply(self, context: Context, reply: Reply):
@@ -381,6 +405,15 @@ def check_prefix(content, prefix_list):
         return None
     for prefix in prefix_list:
         if content.startswith(prefix):
+            return prefix
+    return None
+
+
+def check_prefix_single(fromUser, prefix_list):
+    if not prefix_list:
+        return None
+    for prefix in prefix_list:
+        if fromUser == prefix:
             return prefix
     return None
 

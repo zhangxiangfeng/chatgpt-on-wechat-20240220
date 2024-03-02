@@ -12,8 +12,9 @@ from common.log import logger
 available_setting = {
     # openai api配置
     "open_ai_api_key": "",  # openai api key
+    "open_api_base": "",  # open_api_base
     # openai apibase，当use_azure_chatgpt为true时，需要设置对应的api base
-    "open_ai_api_base": "https://api.openai.com/v1",
+    "open_ai_api_base": "http://api-openai.it-labs.cn/v1",
     "proxy": "",  # openai使用的代理
     # chatgpt模型， 当use_azure_chatgpt为true时，其名称为Azure上model deployment名称
     "model": "gpt-3.5-turbo",  # 还支持 gpt-4, gpt-4-turbo, wenxin, xunfei, qwen
@@ -153,6 +154,7 @@ available_setting = {
     # 智谱AI 平台配置
     "zhipu_ai_api_key": "",
     "zhipu_ai_api_base": "https://open.bigmodel.cn/api/paas/v4",
+
     # LinkAI平台配置
     "use_linkai": False,
     "linkai_api_key": "",
